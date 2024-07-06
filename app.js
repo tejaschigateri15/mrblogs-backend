@@ -22,7 +22,13 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import generateAccessToken from "./token/AccessToken.js";
 import generateRefreshToken from "./token/RefreshToken.js";
 import verifyToken from './middleware/verifytoken.js';
-
+import asyncRedis from 'async-redis';
+import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
+import mongoSanitize from 'express-mongo-sanitize';
+import xss from 'xss-clean';
+import hpp from 'hpp';
+import compression from 'compression';
 
 
 dotenv.config();
@@ -33,7 +39,39 @@ const port = process.env.PORT || 3000; // Use uppercase 'PORT' for consistency
 
 const dburi = process.env.mongoURI;
 
-app.use(cors());
+// Security middleware
+app.use(helmet());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
+
+
+app.use(mongoSanitize());
+
+// Data sanitization against XSS
+app.use(xss());
+
+// Prevent parameter pollution
+app.use(hpp());
+
+// Compression middleware
+app.use(compression());
+
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.ALLOWED_ORIGIN 
+    : 'http://localhost:5173', // Allow only this origin
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Authorization', 'Content-Type'],
+  credentials: true,
+}));
+
+app.options('*', cors());
+
+app.disable('x-powered-by');
 app.use(express.json());
 
 app.use(cookieParser());
@@ -46,6 +84,18 @@ app.use(
     parameterLimit: 50000,
   }),
 );
+
+const client = asyncRedis.createClient({
+  // password: process.env.REDIS_PASSWORD,
+  socket: {
+      host: 'redis-14001.c301.ap-south-1-1.ec2.redns.redis-cloud.com',
+      port: 14001
+  }
+});
+
+client.on('error', (err) => {
+  console.error('Redis error:', err);
+});
 
 
 const storage = multer.memoryStorage();
@@ -71,7 +121,6 @@ cloudinary.config({
   api_secret: process.env.CLOUD_KEY_SECRET
 });
 
-const client = redis.createClient();
 
 const uploader = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // allow 10MB
@@ -312,12 +361,20 @@ app.post('/upload',  async (req, res) => {
 
 // get profile data
 
-app.get('/api/getprofile/:username',async (req, res) => {
+app.get('/api/getprofile/:username', async (req, res) => {
   try {
-    // console.log("fdfd",req.user.username)
     const { username } = req.params;
-    const data = await userprofile.findOne({ name: username});
-    // console.log("data : ",data);
+    const cacheKey = `profile_${username}`;
+
+    const cachedData = await client.get(cacheKey);
+    if (cachedData) {
+      return res.status(200).json(JSON.parse(cachedData));
+    }
+
+    const data = await userprofile.findOne({ name: username });
+
+    await client.setex(cacheKey, 1800, JSON.stringify(data));
+
     res.status(200).json(data);
   } catch (error) {
     console.error('Error fetching profile:', error);
@@ -325,10 +382,19 @@ app.get('/api/getprofile/:username',async (req, res) => {
   }
 });
 
-app.get('/getprofile', verifyToken,async (req, res) => {
+app.get('/getprofile', verifyToken, async (req, res) => {
   try {
-    console.log("fdfd",req.params)
-    const data = await userprofile.findOne({ name: req.user.username});
+    const cacheKey = `profile_${req.user.username}`;
+
+    const cachedData = await client.get(cacheKey);
+    if (cachedData) {
+      return res.status(200).json(JSON.parse(cachedData));
+    }
+
+    const data = await userprofile.findOne({ name: req.user.username });
+
+    await client.setex(cacheKey, 1800, JSON.stringify(data));
+
     res.status(200).json(data);
   } catch (error) {
     console.error('Error fetching profile:', error);
@@ -394,11 +460,40 @@ app.post('/api/createblog',verifyToken,async(req,res)=>{
 
 // get all blogs
 
-app.get('/api/getblog',async(req,res)=>{
-  const allblogs = await blogschema.find();
-  // client.setex(req.originalUrl, 3600, JSON.stringify(allblogs));
-  res.status(200).json(allblogs);
-})
+// app.get('/api/getblog',async(req,res)=>{
+//   const allblogs = await blogschema.find();
+//   console.log("url",req.originalUrl)
+//   // client.setex(req.originalUrl, 3600, JSON.stringify(allblogs));
+//   res.status(200).json(allblogs);
+// })
+
+// API route to fetch all blogs
+app.get('/api/getblog', async (req, res) => {
+  try {
+    const cacheKey = req.originalUrl;
+
+    // Check if data exists in Redis cache
+    const cachedData = await client.get(cacheKey);
+    if (cachedData) {
+      // If cached data exists, return it
+      console.log('Cache hit:', cacheKey)
+      // console.log(JSON.parse(cachedData));
+      return res.status(200).json(JSON.parse(cachedData));
+    }
+
+    // If no cached data, query the database
+    const allblogs = await blogschema.find();
+
+    // Cache the data in Redis for 30 minutes (1800 seconds)
+    await client.setex(cacheKey, 1800, JSON.stringify(allblogs));
+
+    // Return the data
+    res.status(200).json(allblogs);
+  } catch (error) {
+    console.error('Error fetching blogs:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 
 // get blog by id
