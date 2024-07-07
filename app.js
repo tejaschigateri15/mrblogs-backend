@@ -368,6 +368,7 @@ app.get('/api/getprofile/:username', async (req, res) => {
 
     const cachedData = await client.get(cacheKey);
     if (cachedData) {
+      console.log('Cache hit:', cacheKey);
       return res.status(200).json(JSON.parse(cachedData));
     }
 
@@ -388,6 +389,7 @@ app.get('/getprofile', verifyToken, async (req, res) => {
 
     const cachedData = await client.get(cacheKey);
     if (cachedData) {
+      console.log('Cache hit:', cacheKey);
       return res.status(200).json(JSON.parse(cachedData));
     }
 
@@ -406,19 +408,34 @@ app.get('/getprofile', verifyToken, async (req, res) => {
 app.get('/getprofilepic/:username', async (req, res) => {
   try {
     const { username } = req.params;
-    const data = await userprofile.findOne({ name: username });
-    if(data){
-        if(data.profile_pic.length > 0){
-          const image = data.profile_pic;
-          res.status(200).json(image);
-        }
+    const cacheKey = `profile_pic:${username}`;
+
+    // Check if the profile picture is cached in Redis
+    const cachedImage = await client.get(cacheKey);
+    if (cachedImage) {
+      console.log('Cache hit:', cacheKey);
+      return res.status(200).json(JSON.parse(cachedImage));
     }
-    // res.status(200).json(data);
+
+    // If not in cache, fetch from database
+    const data = await userprofile.findOne({ name: username });
+    if (data && data.profile_pic.length > 0) {
+      const image = data.profile_pic;
+      
+      // Cache the profile picture in Redis
+      await client.setex(cacheKey, 1800, JSON.stringify(image)); // Cache for 30 minutes
+
+      return res.status(200).json(image);
+    } else {
+      return res.status(404).json({ message: 'Profile picture not found' });
+    }
   } catch (error) {
     console.error('Error fetching profile:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
+
+
 
 
 
@@ -498,22 +515,53 @@ app.get('/api/getblog', async (req, res) => {
 
 // get blog by id
 
-app.get('/api/getblog/:id',async(req,res)=>{
-  const { id } = req.params;
-  const blog = await blogschema.findById(id);
-  res.status(200).json(blog);
-  // console.log("blog : ",blog);
-})
+app.get('/api/getblog/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cacheKey = `blog:${id}`;
 
+    const cachedBlog = await client.get(cacheKey);
+    if (cachedBlog) {
+      console.log('Cache hit:', cacheKey);
+      return res.status(200).json(JSON.parse(cachedBlog));
+    }
+
+    const blog = await blogschema.findById(id);
+    if (blog) {
+      await client.setex(cacheKey, 1800, JSON.stringify(blog));
+
+      return res.status(200).json(blog);
+    } else {
+      return res.status(404).json({ message: 'Blog not found' });
+    }
+  } catch (error) {
+    console.error('Error fetching blog:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
 
 // get user blog
 
 app.get('/api/userblog/:username',async(req,res)=>{
-  const { username } = req.params;
-  // console.log("username : ",username);
-  const blog = await blogschema.find({ author: username });
-  res.status(200).json(blog);
-  // console.log("blog : ",blog);
+  try{
+
+    const { username } = req.params;
+    const cacheKey = `userblog:${username}`;
+    const cachedBlog = await client.get(cacheKey);
+    if (cachedBlog) {
+      console.log('Cache hitx:', cacheKey);
+      return res.status(200).json(JSON.parse(cachedBlog));
+    }
+
+    const blog = await blogschema.find({ author: username });
+    await client.setex(cacheKey, 1800, JSON.stringify(blog));
+
+    res.status(200).json(blog);
+    // console.log("blog : ",blog);
+  }
+  catch(error){
+    console.log(error);
+  }
 })
 
 
@@ -522,6 +570,15 @@ app.get('/api/userblog/:username',async(req,res)=>{
 app.get('/api/savedblog/:username', async (req, res) => {
   try {
     const { username } = req.params;
+
+    const cacheKey = `savedblog:${username}`;
+    const cachedBlog = await client.get(cacheKey);
+    if (cachedBlog) {
+      console.log('Cache hit:', cacheKey);
+      return res.status(200).json(JSON.parse(cachedBlog));
+    }
+
+
     const userProfile = await userprofile.findOne({ name: username });
     
     if (!userProfile || !userProfile.saved_blogs || userProfile.saved_blogs.length === 0) {
@@ -533,6 +590,8 @@ app.get('/api/savedblog/:username', async (req, res) => {
     if (blog.length === 0) {
       return res.status(200).json({ message: "No saved blogs" });
     }
+
+    await client.setex(cacheKey, 1800, JSON.stringify(blog));
 
     res.status(200).json(blog);
   } catch (error) {
@@ -605,34 +664,58 @@ app.post('/api/postcomment', async (req, res) => {
 
 // get comments of the blog
 app.get('/api/getcomment/:id',async(req,res)=>{
-  const { id } = req.params;
-  const blog = await blogschema.findById(id);
-  res.status(200).json(blog.comments);
+  try{
+
+    const { id } = req.params;
+
+    const cacheKey = `comments:${id}`;
+    const cachedComments = await client.get(cacheKey);
+    if (cachedComments) {
+      console.log('Cache hit:', cacheKey);
+      return res.status(200).json(JSON.parse(cachedComments));
+    }
+
+    const blog = await blogschema.findById(id);
+    await client.setex(cacheKey, 1800, JSON.stringify(blog.comments));
+    res.status(200).json(blog.comments);
+  }
+  catch(error){
+    console.log(error);
+  }
 
 })
 
 
 
 // get blog by category
-app.get('/api/category/:category',async(req,res)=>{
+app.get('/api/category/:category', async (req, res) => {
+  try {
+    const { category } = req.params;
+    const cacheKey = `category:${category}`;
 
-  const { category } = req.params;
-  if(category === "Health"){
-    const blog = await blogschema.find({ category:{$in: ["Health","Personal Development"]} });
-    res.status(200).json(blog);
-  
+    const cachedBlogs = await client.get(cacheKey);
+    if (cachedBlogs) {
+      console.log('Cache hit:', cacheKey);
+      return res.status(200).json(JSON.parse(cachedBlogs));
+    }
+
+    let blogs;
+    if (category === "Health") {
+      blogs = await blogschema.find({ category: { $in: ["Health", "Personal Development"] } });
+    } else if (category === "Others") {
+      blogs = await blogschema.find({ category: { $nin: ["Health", "Personal Development", "Technology", "Science", "Business", "Automobile"] } });
+    } else {
+      blogs = await blogschema.find({ category: category });
+    }
+
+    await client.setex(cacheKey, 1800, JSON.stringify(blogs)); // Cache for 30 minutes
+
+    res.status(200).json(blogs);
+  } catch (error) {
+    console.error('Error fetching blogs by category:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
-  else if(category === "Others"){
-    const blog = await blogschema.find({ category:{$nin: ["Health","Personal Development","Technology","Science","Business","Automobile"]} });
-    res.status(200).json(blog);
-  }
-  else{
-    const blog = await blogschema.find({ category: category });
-    res.status(200).json(blog);
-  }
-  
-  // console.log("blog : ",blog);
-})
+});
 
 // get user profile details
 app.post('/api/userdetails',async(req,res)=>{
@@ -696,34 +779,61 @@ app.post('/api/followcategory', async (req, res) => {
 
   // category followed by user
 
-  app.get('/api/getcategoryinfo/:category',async(req,res)=>{
-    const { category } = req.params;
-    const data = await Category.findOne({ name: category });
-    res.status(200).json(data);
-  })
+  app.get('/api/getcategoryinfo/:category', async (req, res) => {
+    try {
+      const { category } = req.params;
+      const cacheKey = `categoryInfo:${category}`;
+  
+      const cachedCategory = await client.get(cacheKey);
+      if (cachedCategory) {
+        console.log('Cache hit:', cacheKey);
+        return res.status(200).json(JSON.parse(cachedCategory));
+      }
+  
+      const data = await Category.findOne({ name: category });
+      if (!data) {
+        return res.status(404).json({ message: 'Category not found' });
+      }
+  
+      await client.setex(cacheKey, 1800, JSON.stringify(data)); // Cache for 30 minutes
+  
+      res.status(200).json(data);
+    } catch (error) {
+      console.error('Error fetching category info:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
 
 
   // recently saved
   app.get('/api/recentlysaved/:username', async (req, res) => {
     const { username } = req.params;
-    // console.log("username : ", username);
     try {
-        const userProfile = await userprofile.findOne({ name: username });
-        // console.log("user profile : ", userProfile);
-        if (!userProfile || !userProfile.saved_blogs || userProfile.saved_blogs.length === 0) {
-            res.status(200).json({ message: "No saved blogs" });
-            return;
-        }
-
-        // console.log("saved blogs : ", userProfile.saved_blogs);
-        const recently_savedblog = await blogschema.find({ _id: { $in: userProfile.saved_blogs } }).limit(2).sort({ $natural: +1 });
-        // console.log("recently saved : ", recently_savedblog);
-        res.status(200).json({recently_savedblog,blog_id: userProfile.saved_blogs,profile_pic: userProfile.profile_pic});
+      const cacheKey = `recentlySaved:${username}`;
+  
+      const cachedRecentlySaved = await client.get(cacheKey);
+      if (cachedRecentlySaved) {
+        const { recently_savedblog, blog_id, profile_pic } = JSON.parse(cachedRecentlySaved);
+        console.log('Cache hit:', cacheKey);
+        return res.status(200).json({ recently_savedblog, blog_id, profile_pic });
+      }
+  
+      const userProfile = await userprofile.findOne({ name: username });
+      if (!userProfile || !userProfile.saved_blogs || userProfile.saved_blogs.length === 0) {
+        res.status(200).json({ message: "No saved blogs" });
+        return;
+      }
+  
+      const recently_savedblog = await blogschema.find({ _id: { $in: userProfile.saved_blogs } }).limit(2).sort({ $natural: +1 });
+  
+      await client.setex(cacheKey, 1800, JSON.stringify({ recently_savedblog, blog_id: userProfile.saved_blogs, profile_pic: userProfile.profile_pic }));
+  
+      res.status(200).json({ recently_savedblog, blog_id: userProfile.saved_blogs, profile_pic: userProfile.profile_pic });
     } catch (error) {
-        console.error("Error:", error);
-        res.status(500).json({ message: "Internal server error" });
+      console.error("Error:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
-})
+  });
 
 
 
@@ -735,13 +845,33 @@ app.get('/api/getIP',async(req,res)=>{
 
 
 
-app.get('/api/getuserlikeandcomment/:id/:username',async(req,res)=>{
+app.get('/api/getuserlikeandcomment/:id/:username', async (req, res) => {
   const { id, username } = req.params;
-  const blog = await blogschema.findById(id);
-  const { likes, comments } = blog;
-  const isliked = likes.likedby.includes(username);
-  res.status(200).json({ likes, comments, isliked });
-})
+  try {
+    const cacheKey = `userLikeComment:${id}:${username}`;
+
+    const cachedData = await client.get(cacheKey);
+    if (cachedData) {
+      const { likes, comments, isliked } = JSON.parse(cachedData);
+      return res.status(200).json({ likes, comments, isliked });
+    }
+
+    const blog = await blogschema.findById(id);
+    if (!blog) {
+      return res.status(404).json({ message: "Blog not found" });
+    }
+
+    const { likes, comments } = blog;
+    const isliked = likes.likedby.includes(username);
+
+    await client.setex(cacheKey, 1800, JSON.stringify({ likes, comments, isliked }));
+
+    res.status(200).json({ likes, comments, isliked });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 
 app.post('/api/likeblog',async(req,res)=>{
@@ -827,22 +957,26 @@ app.get('/api/getlikesandsaved', async (req, res) => {
   let liked = false;
 
   try {
-    const profile = await userprofile.findOne({ name: username });
-    
-    if (profile && profile.saved_blogs) {
-      if (profile.saved_blogs.includes(blog_id)) {
-        saved = true;
-      }
+    const cacheKey = `likesSaved:${blog_id}:${username}`;
+
+    const cachedData = await client.get(cacheKey);
+    if (cachedData) {
+      const { saved, liked } = JSON.parse(cachedData);
+      console.log('Cache hit:', cacheKey);
+      return res.status(200).json({ saved, liked });
     }
-    
-    console.log(req.query);
-    
+
+    const profile = await userprofile.findOne({ name: username });
+    if (profile && profile.saved_blogs && profile.saved_blogs.includes(blog_id)) {
+      saved = true;
+    }
+
     const blog = await blogschema.findById(blog_id);
-    const { likes } = blog;
-    
-    if (likes && likes.likedby && likes.likedby.includes(username)) {
+    if (blog && blog.likes && blog.likes.likedby && blog.likes.likedby.includes(username)) {
       liked = true;
     }
+
+    await client.setex(cacheKey, 1800, JSON.stringify({ saved, liked }));
 
     res.status(200).json({ saved, liked });
   } catch (error) {
@@ -874,11 +1008,29 @@ app.get('/hello' , (req,res) => {
 app.get('/api/getallcomments/:author', async (req, res) => {
   try {
     const { author } = req.params;
-    const blog = await blogschema.find({ author: author });
-    const comments = blog.map(blog => blog.comments);
-    const filteredComments = comments.filter(commentArray => commentArray.length > 0);
-    const flattenedArray = filteredComments.flatMap(innerArray => innerArray);
-    res.status(200).json(flattenedArray);
+    const cacheKey = `commentsxs:${author}`;
+
+    const cachedComments = await client.get(cacheKey);
+    if (cachedComments) {
+      const parsedComments = JSON.parse(cachedComments);
+      console.log('Cache hit:', cacheKey);
+      return res.status(200).json(parsedComments);
+    }
+
+    const blogs = await blogschema.find({ author: author });
+
+    let allComments = [];
+    blogs.forEach(blog => {
+      if (blog.comments && blog.comments.length > 0) {
+        allComments = allComments.concat(blog.comments);
+      }
+    });
+
+    const flattenedComments = allComments.flat();
+
+    await client.setex(cacheKey, 1800, JSON.stringify(flattenedComments));
+
+    res.status(200).json(flattenedComments);
   } catch (error) {
     console.error('Error fetching comments:', error);
     res.status(500).json({ message: 'Internal server error' });
