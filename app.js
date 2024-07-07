@@ -223,13 +223,7 @@ app.post('/login', async (req, res) => {
       const { profile_pic } = profile_data;
     }
   }
-  // const profile_data = await userprofile.findOne({ name: data.username })
-  // if (profile_data){
-  //   const { profile_pic } = profile_data;
-  // }
-  
-  // console.log("profile data : ",profile_data);
-  // let token;
+
 
   if (data) {
     const isMatch = await bcrypt.compare(password, data.password);
@@ -262,60 +256,7 @@ app.post('/login', async (req, res) => {
     res.status(500).json({ error: "Email is incorrect" });
   }
 
-  // console.log(req.body,token);
 
-});
-
-
-
-app.post('/profile', async (req, res) => {
-  res.cookie("id", "1234", { maxAge: 3600000 * 24, httpOnly: true });
-  console.log(req.cookies);
-  res.status(200).json({ message: "success" });
-})
-
-const authenticateToken = async (req, res, next) => {
-  const token = req.headers.Authorization;
-  const authtoken = token && token.split(' ')[1];
-  console.log(req.headers.authorization, authtoken);
-
-  if (!token) return res.sendStatus(401);
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded.user;
-    console.log(req.user);
-    next();
-  } catch (error) {
-    res.status(400).send("Invalid token.");
-  }
-}
-
-app.get('/authen', authenticateToken, async function (req, res) {
-  const user = req.user;
-  res.status(200).json(`Hello ${user.email}`);
-  console.log(user);
-});
-
-app.post('/nn', async (req, res) => {
-  const user = {
-    id: 1,
-    username: 'brad'
-  }
-  res.json(user)
-})
-
-app.get('/user', async (req, res) => {
-  try {
-    const name = req.query.user_name;
-    console.log("name", name);
-    const data = await profile.findOne({ username: name });
-    console.log("data132 : ", data);
-    res.status(200).json(data);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
 });
 
 
@@ -436,12 +377,7 @@ app.get('/getprofilepic/:username', async (req, res) => {
 });
 
 
-
-
-
-
 // create blog
-
 
 app.post('/api/createblog',verifyToken,async(req,res)=>{
   const { author, author_img, image, title, content, tag, category } = req.body;   
@@ -477,34 +413,20 @@ app.post('/api/createblog',verifyToken,async(req,res)=>{
 
 // get all blogs
 
-// app.get('/api/getblog',async(req,res)=>{
-//   const allblogs = await blogschema.find();
-//   console.log("url",req.originalUrl)
-//   // client.setex(req.originalUrl, 3600, JSON.stringify(allblogs));
-//   res.status(200).json(allblogs);
-// })
-
-// API route to fetch all blogs
 app.get('/api/getblog', async (req, res) => {
   try {
     const cacheKey = req.originalUrl;
 
-    // Check if data exists in Redis cache
     const cachedData = await client.get(cacheKey);
     if (cachedData) {
-      // If cached data exists, return it
       console.log('Cache hit:', cacheKey)
-      // console.log(JSON.parse(cachedData));
       return res.status(200).json(JSON.parse(cachedData));
     }
 
-    // If no cached data, query the database
     const allblogs = await blogschema.find();
 
-    // Cache the data in Redis for 30 minutes (1800 seconds)
     await client.setex(cacheKey, 1800, JSON.stringify(allblogs));
 
-    // Return the data
     res.status(200).json(allblogs);
   } catch (error) {
     console.error('Error fetching blogs:', error);
@@ -557,7 +479,6 @@ app.get('/api/userblog/:username',async(req,res)=>{
     await client.setex(cacheKey, 1800, JSON.stringify(blog));
 
     res.status(200).json(blog);
-    // console.log("blog : ",blog);
   }
   catch(error){
     console.log(error);
@@ -627,13 +548,11 @@ app.post('/api/saveblog', async (req, res) => {
 app.post('/api/postcomment', async (req, res) => {
   const { blog_id, username, comment } = req.body;
 
-  // Check if required fields are present
   if (!blog_id || !username || !comment) {
     return res.status(400).send("Missing required fields");
   }
 
   try {
-    // Fetch user profile pic
     const user = await userprofile.findOne({ name: username });
 
     if (!user) {
@@ -642,7 +561,6 @@ app.post('/api/postcomment', async (req, res) => {
 
     const user_img = user.profile_pic;
 
-    // new comment
     const updated = await blogschema.findOneAndUpdate(
       { _id: blog_id },
       { $push: { comments: { username, user_img, comment } } },
@@ -717,16 +635,6 @@ app.get('/api/category/:category', async (req, res) => {
   }
 });
 
-// get user profile details
-app.post('/api/userdetails',async(req,res)=>{
-  // const { username } = req.body;
-  // const data = await userprofile.findOne({ name: username });
-  // res.status(200).json(data);
-  console.log(req.body);
-  res.status(200).json(req.body);
-})
-
-
 // follow category
 app.post('/api/followcategory', async (req, res) => {
   const { category, username } = req.body;
@@ -773,9 +681,6 @@ app.post('/api/followcategory', async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
-
-
-
 
   // category followed by user
 
