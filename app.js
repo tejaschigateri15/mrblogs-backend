@@ -88,8 +88,8 @@ app.use(
 const client = asyncRedis.createClient({
   // password: process.env.REDIS_PASSWORD,
   socket: {
-      host: 'redis-14001.c301.ap-south-1-1.ec2.redns.redis-cloud.com',
-      port: 14001
+      host: process.env.REDIS_URL,
+      port: process.env.REDIS_PORT
   }
 });
 
