@@ -10,7 +10,6 @@ import profile from "./models/signup.js";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import axios from "axios";
-// import cloudinary from "./config/cloudinary.js";
 import { v2 as cloudinary } from "cloudinary"
 import multer from "multer";
 import TestImage from "./models/test_image.js";
@@ -60,14 +59,7 @@ app.use(hpp());
 // Compression middleware
 app.use(compression());
 
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.ALLOWED_ORIGIN 
-    : 'http://localhost:5173', // Allow only this origin
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Authorization', 'Content-Type'],
-  credentials: true,
-}));
+app.use(cors());
 
 app.options('*', cors());
 
@@ -85,17 +77,29 @@ app.use(
   }),
 );
 
-const client = asyncRedis.createClient({
-  // password: process.env.REDIS_PASSWORD,
-  socket: {
-      host: process.env.REDIS_URL,
-      port: process.env.REDIS_PORT
-  }
-});
+// for local
+// const client = asyncRedis.createClient({
+  
+//   socket: {
+  //       host:  "localhost",
+  
+  //       port: 6379
+  //   }
+  // });
+  
+// console.log(process.env.REDIS_URL);
+
+const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
 
 client.on('error', (err) => {
   console.error('Redis error:', err);
 });
+
+
+
+// client.on('error', (err) => {
+//   console.error('Redis error:', err);
+// });
 
 
 const storage = multer.memoryStorage();
