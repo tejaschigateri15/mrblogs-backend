@@ -67,7 +67,6 @@ app.disable('x-powered-by');
 app.use(express.json());
 
 app.use(cookieParser());
-app.use(bodyParser.json({limit: '35mb'}));
 
 app.use(
   bodyParser.urlencoded({
@@ -78,36 +77,30 @@ app.use(
 );
 
 // for local
-// const client = asyncRedis.createClient({
+const client = asyncRedis.createClient({
   
-//   socket: {
-  //       host:  "localhost",
+  socket: {
+        // host:  "localhost",
+        host:  "redis-service",
   
-  //       port: 6379
-  //   }
-  // });
+        port: 6379
+    }
+  });
   
 // console.log(process.env.REDIS_URL);
 
-const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
+// cloud redis
+// const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
 
 client.on('error', (err) => {
   console.error('Redis error:', err);
 });
-
-
-
-// client.on('error', (err) => {
-//   console.error('Redis error:', err);
-// });
-
 
 const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
 });
-
 
 
 mongoose.connect(dburi)
@@ -161,10 +154,8 @@ const checkCache = (req, res, next) => {
 };
 
 
-
-
 app.get('/', (req, res) => {
-  res.send('hello world');
+  res.send('hello world_123');
 });
 
 app.get('/test123', (req, res) => {
@@ -384,6 +375,9 @@ app.get('/getprofilepic/:username', async (req, res) => {
 // create blog
 
 app.post('/api/createblog',verifyToken,async(req,res)=>{
+  if (content.length < 50 || title.length === 0 || tag.length === 0 || category.length === 0 || image.length === 0 || author.length === 0) {
+    return res.status(400).json({ message: 'Please fill in all fields' });
+  }
   const { author, author_img, image, title, content, tag, category } = req.body;   
   console.log("req.query : ",req.query);
   try{
@@ -907,7 +901,7 @@ app.get('/api/popular', async (req, res) => {
   res.status(200).json(mostLikeAndComments);
 });
 
-app.get('/hello' , (req,res) => {
+app.get('/hellox' , (req,res) => {
   res.send('hello');
 })
 
