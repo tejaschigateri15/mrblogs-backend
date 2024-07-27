@@ -90,20 +90,20 @@ app.use(
 );
 
 // for local
-// const client = asyncRedis.createClient({
+const client = asyncRedis.createClient({
   
-//   socket: {
-//         // host:  "localhost",
-//         host:  "redis-service",
+  socket: {
+        // host:  "localhost",
+        host:  "redis-service",
   
-//         port: 6379
-//     }
-//   });
+        port: 6379
+    }
+  });
   
 // console.log(process.env.REDIS_URL);
 
 // cloud redis
-const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
+// const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
 console.log("client : ",process.env.REDIS_URL);
 
 client.on('error', (err) => {
@@ -173,7 +173,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/test123', (req, res) => {
-  res.send('hello 123');
+  res.send('hello from github');
 });
 
 app.post('/', async (req, res) => {
@@ -483,7 +483,7 @@ app.get('/api/getblog/:id', async (req, res) => {
 
     const blog = await blogschema.findById(id);
     if (blog) {
-      await client.setex(cacheKey, 600, JSON.stringify(blog));
+      await client.setex(cacheKey, 300, JSON.stringify(blog));
 
       return res.status(200).json(blog);
     } else {
@@ -545,7 +545,7 @@ app.get('/api/savedblog/:username', async (req, res) => {
       return res.status(200).json({ message: "No saved blogs" });
     }
 
-    await client.setex(cacheKey, 1800, JSON.stringify(blog));
+    await client.setex(cacheKey, 150, JSON.stringify(blog));
 
     res.status(200).json(blog);
   } catch (error) {
@@ -675,7 +675,7 @@ app.get('/api/category/:category', async (req, res) => {
       blogs = await blogschema.find({ category: category });
     }
 
-    await client.setex(cacheKey, 1800, JSON.stringify(blogs)); // Cache for 30 minutes
+    await client.setex(cacheKey, 300, JSON.stringify(blogs)); // Cache for 30 minutes
 
     res.status(200).json(blogs);
   } catch (error) {
@@ -754,7 +754,7 @@ app.post('/api/followcategory', async (req, res) => {
         return res.status(404).json({ message: 'Category not found' });
       }
   
-      await client.setex(cacheKey, 600, JSON.stringify(data)); // Cache for 30 minutes
+      await client.setex(cacheKey, 300, JSON.stringify(data)); // Cache for 30 minutes
   
       res.status(200).json(data);
     } catch (error) {
@@ -816,7 +816,7 @@ app.get('/api/getuserlikeandcomment/:id/:username', async (req, res) => {
     const { likes, comments } = blog;
     const isliked = likes.likedby.includes(username);
 
-    await client.setex(cacheKey, 1800, JSON.stringify({ likes, comments, isliked }));
+    await client.setex(cacheKey, 220, JSON.stringify({ likes, comments, isliked }));
 
     res.status(200).json({ likes, comments, isliked });
   } catch (error) {
@@ -931,7 +931,7 @@ app.get('/api/getlikesandsaved', async (req, res) => {
       liked = true;
     }
 
-    await client.setex(cacheKey, 1800, JSON.stringify({ saved, liked }));
+    await client.setex(cacheKey, 120, JSON.stringify({ saved, liked }));
 
     res.status(200).json({ saved, liked });
   } catch (error) {
