@@ -173,7 +173,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/test123', (req, res) => {
-  res.send('hello from github');
+  res.send('hello from test123');
 });
 
 app.post('/', async (req, res) => {
