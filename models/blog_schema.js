@@ -2,22 +2,28 @@ import mongoose from "mongoose";
 
 const schema = new mongoose.Schema({
     author: {
-        type: String  //username 
+        type: String,  //username 
+        required: [true, 'Author is required']
     },
     author_img: {
         type: String
     },
     author_id: {
-        type: String // user id of the user who created the blog
+        type: String, // user id of the user who created the blog
+        required: [true, 'Author ID is required']
     },
     blog_image: {
-        type: String
+        type: String,
+        required: [true, 'Blog image is required']
     },
     title: {
-        type: String
+        type: String,
+        required: [true, 'Title is required']
     },
     body: {
-        type: String
+        type: String,
+        required: [true, 'Content is required'],
+        minlength: [50, 'Content must be at least 50 characters']
     },
     comments: [
         {
@@ -31,22 +37,26 @@ const schema = new mongoose.Schema({
         },
     ],
     tags: {
-        type: [String]
+        type: [String],
+        required: [true, 'Tags are required']
     },
     category: {
-        type: String
+        type: String,
+        required: [true, 'Category is required']
     },
     views: {
-        type: Number
+        type: Number,
+        default: 0
     },
     date: {
         type: Date,
         default: Date.now
     },
-    likes :{
-        likedby : [String],
+    likes: {
+        likedby: [String],
+        default: []
     },
-    isPrivate:{
+    isPrivate: {
         type: Boolean,
         default: false
     }

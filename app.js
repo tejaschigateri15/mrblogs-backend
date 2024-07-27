@@ -33,18 +33,31 @@ import compression from 'compression';
 dotenv.config();
 
 const app = express();
-
-const port = process.env.PORT || 3000; // Use uppercase 'PORT' for consistency
-
-const dburi = process.env.mongoURI;
-
-// Security middleware
+app.set('trust proxy', 1);
 app.use(helmet());
 
+const port = process.env.port || 8080; 
+const dburi = process.env.mongoURI;
+
+
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  windowMs: 100 * 60 * 1000, 
+  max: 1000, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // Add a custom key generator function
+  keyGenerator: (req) => {
+    // Use the leftmost IP in the X-Forwarded-For header
+    return req.ip || req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+  },
 });
+
+// Security middleware
+
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 1000 // limit each IP to 100 requests per windowMs
+// });
 app.use(limiter);
 
 
@@ -77,20 +90,21 @@ app.use(
 );
 
 // for local
-const client = asyncRedis.createClient({
+// const client = asyncRedis.createClient({
   
-  socket: {
-        // host:  "localhost",
-        host:  "redis-service",
+//   socket: {
+//         // host:  "localhost",
+//         host:  "redis-service",
   
-        port: 6379
-    }
-  });
+//         port: 6379
+//     }
+//   });
   
 // console.log(process.env.REDIS_URL);
 
 // cloud redis
-// const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
+const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
+console.log("client : ",process.env.REDIS_URL);
 
 client.on('error', (err) => {
   console.error('Redis error:', err);
@@ -286,7 +300,10 @@ app.post('/upload',  async (req, res) => {
       const updateblog = await blogschema.updateMany({ author: username }, { author: name, author_img: image }, { new: true })
     }
 
-    console.log("body = ", name, "no. ", phoneno, "bio ", bio, "insta ", insta, "linkedin ", linkedin, "\nusername = ", username)
+    console.log("body = ", name, "no. ", phoneno, "bio ", bio, "insta ", insta, "linkedin ", linkedin, "\nusername = ", username);
+    const cacheKey = `profile_${username}`;
+    await client.del(cacheKey);
+    console.log(`Cache invalidated for key: ${cacheKey}`);
 
     res.status(200).json(req.body);
   } catch (error) {
@@ -304,13 +321,13 @@ app.get('/api/getprofile/:username', async (req, res) => {
 
     const cachedData = await client.get(cacheKey);
     if (cachedData) {
-      console.log('Cache hit:', cacheKey);
+      console.log('Cache hitpx:', cacheKey);
       return res.status(200).json(JSON.parse(cachedData));
     }
 
     const data = await userprofile.findOne({ name: username });
 
-    await client.setex(cacheKey, 1800, JSON.stringify(data));
+    await client.setex(cacheKey, 300, JSON.stringify(data));
 
     res.status(200).json(data);
   } catch (error) {
@@ -325,13 +342,14 @@ app.get('/getprofile', verifyToken, async (req, res) => {
 
     const cachedData = await client.get(cacheKey);
     if (cachedData) {
-      console.log('Cache hit:', cacheKey);
+      console.log('Cache hitpp:', cacheKey);
       return res.status(200).json(JSON.parse(cachedData));
     }
 
     const data = await userprofile.findOne({ name: req.user.username });
+    console.log("data : ",data);
 
-    await client.setex(cacheKey, 1800, JSON.stringify(data));
+    await client.setex(cacheKey, 300, JSON.stringify(data));
 
     res.status(200).json(data);
   } catch (error) {
@@ -349,7 +367,7 @@ app.get('/getprofilepic/:username', async (req, res) => {
     // Check if the profile picture is cached in Redis
     const cachedImage = await client.get(cacheKey);
     if (cachedImage) {
-      console.log('Cache hit:', cacheKey);
+      console.log('Cache hityy:', cacheKey);
       return res.status(200).json(JSON.parse(cachedImage));
     }
 
@@ -359,7 +377,7 @@ app.get('/getprofilepic/:username', async (req, res) => {
       const image = data.profile_pic;
       
       // Cache the profile picture in Redis
-      await client.setex(cacheKey, 1800, JSON.stringify(image)); // Cache for 30 minutes
+      await client.setex(cacheKey, 300, JSON.stringify(image)); // Cache for 10 minutes
 
       return res.status(200).json(image);
     } else {
@@ -372,48 +390,65 @@ app.get('/getprofilepic/:username', async (req, res) => {
 });
 
 
+
 // create blog
+app.post('/api/createblog', verifyToken, async (req, res) => {
+  const { author, author_img, image, title, content, tag, category } = req.body;
 
-app.post('/api/createblog',verifyToken,async(req,res)=>{
-  if (content.length < 50 || title.length === 0 || tag.length === 0 || category.length === 0 || image.length === 0 || author.length === 0) {
-    return res.status(400).json({ message: 'Please fill in all fields' });
+  if (!content || content.length < 10 || !title || !tag || !category || !image || !author) {
+    return res.status(400).json({ message: 'Please fill in all fields with valid data' });
   }
-  const { author, author_img, image, title, content, tag, category } = req.body;   
-  console.log("req.query : ",req.query);
-  try{
 
-    const authorid = await profile.findOne({ username: author })
-    const auth_id = authorid._id;
-    if(!author_img){
-      const authorimage = await userprofile.findOne({ name: author });
-      author_img = authorimage.profile_pic;
+  try {
+    const authorProfile = await profile.findOne({ username: author });
+    if (!authorProfile) {
+      return res.status(404).json({ message: 'Author not found' });
+    }
+    const auth_id = authorProfile._id;
+
+    let authorImg = author_img;
+    if (!author_img) {
+      const authorImageProfile = await userprofile.findOne({ name: author });
+      authorImg = authorImageProfile ? authorImageProfile.profile_pic : null;
     }
 
     const data = new blogschema({
       author,
-      author_img,
+      author_img: authorImg,
       author_id: auth_id,
       blog_image: image,
       title,
       body: content,
       tags: tag,
       category,
-    });  
+    });
 
     const dataToSave = await data.save();
-    // console.log("data to save : ",dataToSave);
+
+    // Delete the cache
+    const cacheKeys = [
+      `category:${category}`,
+      'allblogs',
+      `blog:${dataToSave._id}`,
+      `userblog:${author}`
+    ];
+    for (const key of cacheKeys) {
+      await client.del(key);
+    }
+
     res.status(200).json(dataToSave);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
-  catch(error){
-    console.log(error);
-  }
-})
+});
+
 
 // get all blogs
 
 app.get('/api/getblog', async (req, res) => {
   try {
-    const cacheKey = req.originalUrl;
+    const cacheKey = 'allblogs';
 
     const cachedData = await client.get(cacheKey);
     if (cachedData) {
@@ -423,7 +458,7 @@ app.get('/api/getblog', async (req, res) => {
 
     const allblogs = await blogschema.find();
 
-    await client.setex(cacheKey, 1800, JSON.stringify(allblogs));
+    await client.setex(cacheKey, 300, JSON.stringify(allblogs));
 
     res.status(200).json(allblogs);
   } catch (error) {
@@ -448,7 +483,7 @@ app.get('/api/getblog/:id', async (req, res) => {
 
     const blog = await blogschema.findById(id);
     if (blog) {
-      await client.setex(cacheKey, 1800, JSON.stringify(blog));
+      await client.setex(cacheKey, 600, JSON.stringify(blog));
 
       return res.status(200).json(blog);
     } else {
@@ -474,7 +509,7 @@ app.get('/api/userblog/:username',async(req,res)=>{
     }
 
     const blog = await blogschema.find({ author: username });
-    await client.setex(cacheKey, 1800, JSON.stringify(blog));
+    await client.setex(cacheKey, 300, JSON.stringify(blog));
 
     res.status(200).json(blog);
   }
@@ -534,7 +569,18 @@ app.post('/api/saveblog', async (req, res) => {
           { new: true }
       );
       // console.log("updated : ", updated);
+      // delete the cache
+      const cacheKey = `savedblog:${username}`;
+      await client.del(cacheKey);
+
+      const cacheKey2 = `recentlySaved:${username}`;
+      await client.del(cacheKey2);
+
+      const cacheKey3 = `likesSaved:${blog_id}:${username}`;
+      await client.del(cacheKey3);
+
       res.status(200).send("Blog saved successfully");
+      
   } catch (error) {
       console.error('Error updating profile:', error);
       res.status(500).send("Internal Server Error");
@@ -569,6 +615,11 @@ app.post('/api/postcomment', async (req, res) => {
       return res.status(404).send("Blog not found");
     }
 
+    // delete the cache
+    const cacheKey = `comments:${blog_id}`;
+    await client.del(cacheKey);
+    console.log(`Cache invalidated for key: ${cacheKey}`);
+
     console.log("updated:", updated);
     return res.status(200).send("Comment posted successfully");
   } catch (error) {
@@ -592,7 +643,7 @@ app.get('/api/getcomment/:id',async(req,res)=>{
     }
 
     const blog = await blogschema.findById(id);
-    await client.setex(cacheKey, 1800, JSON.stringify(blog.comments));
+    await client.setex(cacheKey, 300, JSON.stringify(blog.comments));
     res.status(200).json(blog.comments);
   }
   catch(error){
@@ -673,6 +724,11 @@ app.post('/api/followcategory', async (req, res) => {
       { $addToSet: { followed_topics: category } },
       { new: true }
     );
+
+    // delete the cache
+    const cacheKey = `categoryInfo:${category}`;
+    await client.del(cacheKey);
+
     res.status(200).send("Category followed successfully");
   } catch (error) {
     console.error('Error updating profile:', error);
@@ -698,7 +754,7 @@ app.post('/api/followcategory', async (req, res) => {
         return res.status(404).json({ message: 'Category not found' });
       }
   
-      await client.setex(cacheKey, 1800, JSON.stringify(data)); // Cache for 30 minutes
+      await client.setex(cacheKey, 600, JSON.stringify(data)); // Cache for 30 minutes
   
       res.status(200).json(data);
     } catch (error) {
@@ -729,7 +785,7 @@ app.post('/api/followcategory', async (req, res) => {
   
       const recently_savedblog = await blogschema.find({ _id: { $in: userProfile.saved_blogs } }).limit(2).sort({ $natural: +1 });
   
-      await client.setex(cacheKey, 1800, JSON.stringify({ recently_savedblog, blog_id: userProfile.saved_blogs, profile_pic: userProfile.profile_pic }));
+      await client.setex(cacheKey, 300, JSON.stringify({ recently_savedblog, blog_id: userProfile.saved_blogs, profile_pic: userProfile.profile_pic }));
   
       res.status(200).json({ recently_savedblog, blog_id: userProfile.saved_blogs, profile_pic: userProfile.profile_pic });
     } catch (error) {
@@ -751,14 +807,7 @@ app.get('/api/getIP',async(req,res)=>{
 app.get('/api/getuserlikeandcomment/:id/:username', async (req, res) => {
   const { id, username } = req.params;
   try {
-    const cacheKey = `userLikeComment:${id}:${username}`;
-
-    const cachedData = await client.get(cacheKey);
-    if (cachedData) {
-      const { likes, comments, isliked } = JSON.parse(cachedData);
-      return res.status(200).json({ likes, comments, isliked });
-    }
-
+    
     const blog = await blogschema.findById(id);
     if (!blog) {
       return res.status(404).json({ message: "Blog not found" });
@@ -786,6 +835,9 @@ app.post('/api/likeblog',async(req,res)=>{
       { new: true }
     );
     // console.log("updated : ", updated);
+    const cacheKey = `likesSaved:${blog_id}:${username}`;
+    await client.del(cacheKey);
+
     res.status(200).send("Blog liked successfully");
   }
   catch (error) {
@@ -913,13 +965,6 @@ app.get('/api/getallcomments/:author', async (req, res) => {
     const { author } = req.params;
     const cacheKey = `commentsxs:${author}`;
 
-    const cachedComments = await client.get(cacheKey);
-    if (cachedComments) {
-      const parsedComments = JSON.parse(cachedComments);
-      console.log('Cache hit:', cacheKey);
-      return res.status(200).json(parsedComments);
-    }
-
     const blogs = await blogschema.find({ author: author });
 
     let allComments = [];
@@ -930,8 +975,6 @@ app.get('/api/getallcomments/:author', async (req, res) => {
     });
 
     const flattenedComments = allComments.flat();
-
-    await client.setex(cacheKey, 1800, JSON.stringify(flattenedComments));
 
     res.status(200).json(flattenedComments);
   } catch (error) {
@@ -989,6 +1032,10 @@ app.post('/api/editblog', verifyToken, async (req, res) => {
     if (!updatedBlog) {
       return res.status(404).json({ error: 'Blog not found' });
     }
+    // delete the cache
+    const cacheKey = `blog:${id}`;
+    await client.del(cacheKey);
+
     // console.log("updated blog : ",updatedBlog);
     res.status(200).json(updatedBlog);
   } catch (error) {
