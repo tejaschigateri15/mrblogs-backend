@@ -91,20 +91,20 @@ app.use(
 );
 
 // for local
-// const client = asyncRedis.createClient({
+const client = asyncRedis.createClient({
   
-//   socket: {
-//         // host:  "localhost",
-//         host:  "redis-service",
+  socket: {
+        // host:  "localhost",
+        host:  "redis-service",
   
-//         port: 6379
-//     }
-//   });
+        port: 6379
+    }
+  });
   
 // console.log(process.env.REDIS_URL);
 
 // cloud redis
-const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
+// const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
 console.log("client : ",process.env.REDIS_URL);
 
 client.on('error', (err) => {
