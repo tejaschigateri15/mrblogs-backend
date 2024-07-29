@@ -59,7 +59,12 @@ const schema = new mongoose.Schema({
     isPrivate: {
         type: Boolean,
         default: false
-    }
+    },
+    views: {
+        count: { type: Number, default: 0 },
+        uniqueVisitors: [{ type: String }],
+        lastViewedAt: { type: Date, default: null }
+  }
 
 }, { timestamps: true });
 

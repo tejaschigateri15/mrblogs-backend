@@ -28,6 +28,7 @@ import mongoSanitize from 'express-mongo-sanitize';
 import xss from 'xss-clean';
 import hpp from 'hpp';
 import compression from 'compression';
+import sendEmail from './utils/nodemail.js';
 
 
 dotenv.config();
@@ -90,20 +91,20 @@ app.use(
 );
 
 // for local
-const client = asyncRedis.createClient({
+// const client = asyncRedis.createClient({
   
-  socket: {
-        // host:  "localhost",
-        host:  "redis-service",
+//   socket: {
+//         // host:  "localhost",
+//         host:  "redis-service",
   
-        port: 6379
-    }
-  });
+//         port: 6379
+//     }
+//   });
   
 // console.log(process.env.REDIS_URL);
 
 // cloud redis
-// const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
+const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
 console.log("client : ",process.env.REDIS_URL);
 
 client.on('error', (err) => {
@@ -226,6 +227,7 @@ app.post('/login', async (req, res) => {
   const data = await profile.findOne({ email: email });
   // console.log("data : ",data )
   if(data){
+
     const { username } = data;
     const profile_data = await userprofile.findOne({ name: username });
     if(profile_data){
@@ -235,9 +237,12 @@ app.post('/login', async (req, res) => {
 
 
   if (data) {
+    console.log("data : ",data.password, "password : ",password);
     const isMatch = await bcrypt.compare(password, data.password);
-
+    console.log("isMatch : ",isMatch);
+    
     if (isMatch) {
+      console.log("password matched ")
       const data_id = data._id;
       const accessToken = generateAccessToken({ email: data.email, id: data_id.toString() ,username: data.username});
       const refreshToken = generateRefreshToken({ email: data.email, id: data_id.toString() });
@@ -266,6 +271,76 @@ app.post('/login', async (req, res) => {
   }
 
 
+});
+
+// forgot password
+app.post('/forgotpassword', async (req, res) => {
+  const { email } = req.body;
+  const user = await profile.findOne({email: email});
+  if(user){
+    const token = jwt.sign({email: email}, process.env.RESET_PASSWORD_KEY, {expiresIn: '20m'});
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = Date.now() + 1200000; // 10 minutes
+    await user.save();
+    const baseurl = req.protocol + "://" + req.get('host');
+    const link = `${baseurl}/resetpassword/${token}`;
+    console.log("token",token);
+    
+    await sendEmail({
+      to: user.email,
+      subject: "MR BLOGS - Reset Your Password",
+      token: token
+    });
+
+    res.status(200).json({ message: 'Password reset email sent' });
+  }
+  else{
+    res.status(404).json({error: "User not found"});
+  }
+});
+
+// reset password
+app.post('/resetpassword', async (req, res) => {
+  try {
+    const { token } = req.body;
+    const { password } = req.body;
+
+    // Calculate current time in IST
+    const now = new Date();
+    // const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const istNow = new Date(now.getTime());
+
+    const user = await profile.findOne({
+      resetPasswordToken: token,
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "Invalid reset token" });
+    }
+    // console.log(istNow)
+    // console.log(user.resetPasswordExpires)
+
+    // Check if token has expired
+    if (user.resetPasswordExpires < istNow) {
+      return res.status(400).json({ error: "Reset token has expired" });
+    }
+
+    // Validate password
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters long" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.status(200).json({ message: 'Password reset successful' });
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ error: "An error occurred while resetting the password" });
+  }
 });
 
 
@@ -347,7 +422,7 @@ app.get('/getprofile', verifyToken, async (req, res) => {
     }
 
     const data = await userprofile.findOne({ name: req.user.username });
-    console.log("data : ",data);
+    // console.log("data : ",data);
 
     await client.setex(cacheKey, 300, JSON.stringify(data));
 
@@ -449,7 +524,7 @@ app.post('/api/createblog', verifyToken, async (req, res) => {
 app.get('/api/getblog', async (req, res) => {
   try {
     const cacheKey = 'allblogs';
-
+    console.log(req.ip)
     const cachedData = await client.get(cacheKey);
     if (cachedData) {
       console.log('Cache hit:', cacheKey)
@@ -467,33 +542,110 @@ app.get('/api/getblog', async (req, res) => {
   }
 });
 
+function getCurrentISTTime() {
+  return new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+}
 
-// get blog by id
+async function trackView(blog, visitorIp) {
+  const nowIST = getCurrentISTTime();
+  const COOLDOWN_PERIOD = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+  // Initialize views object if it doesn't exist
+  if (!blog.views) {
+    blog.views = { count: 0, uniqueVisitors: [], lastViewedAt: null };
+  }
+
+  const isNewVisitor = !blog.views.uniqueVisitors.includes(visitorIp);
+  
+  let lastViewedAtIST;
+  if (blog.views.lastViewedAt) {
+    // Convert to Date object if it's a string
+    const lastViewedAt = typeof blog.views.lastViewedAt === 'string' 
+      ? new Date(blog.views.lastViewedAt) 
+      : blog.views.lastViewedAt;
+    
+    lastViewedAtIST = new Date(lastViewedAt.getTime() + (5.5 * 60 * 60 * 1000));
+  } else {
+    lastViewedAtIST = null;
+  }
+
+  const isViewCooldownPassed = !lastViewedAtIST || 
+    (nowIST.getTime() - lastViewedAtIST.getTime() > COOLDOWN_PERIOD);
+
+  if (isNewVisitor || isViewCooldownPassed) {
+    blog.views.count = (blog.views.count || 0) + 1;
+    blog.views.lastViewedAt = nowIST;
+    if (isNewVisitor) {
+      blog.views.uniqueVisitors.push(visitorIp);
+    }
+    await blog.save();
+    return true; // Indicates the blog was updated
+  }
+
+  return false; // Indicates no update was necessary
+}
 
 app.get('/api/getblog/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const visitorIp = req.ip.replace(/^.*:/, ''); // Extract IPv4 address if IPv6 format
     const cacheKey = `blog:${id}`;
 
+    let blog;
     const cachedBlog = await client.get(cacheKey);
+    
     if (cachedBlog) {
       console.log('Cache hit:', cacheKey);
-      return res.status(200).json(JSON.parse(cachedBlog));
-    }
-
-    const blog = await blogschema.findById(id);
-    if (blog) {
-      await client.setex(cacheKey, 300, JSON.stringify(blog));
-
-      return res.status(200).json(blog);
+      blog = JSON.parse(cachedBlog);
     } else {
-      return res.status(404).json({ message: 'Blog not found' });
+      blog = await blogschema.findById(id);
+      if (!blog) {
+        return res.status(404).json({ message: 'Blog not found' });
+      }
     }
+
+    const wasUpdated = await trackView(blog, visitorIp);
+
+    if (wasUpdated || !cachedBlog) {
+      // Update cache if the blog was updated or wasn't in cache
+      await client.setex(cacheKey, 300, JSON.stringify(blog));
+    }
+
+    return res.status(200).json(blog);
   } catch (error) {
     console.error('Error fetching blog:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
+
+
+
+// get blog by id
+
+// app.get('/api/getblog/:id', async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const cacheKey = `blog:${id}`;
+
+//     const cachedBlog = await client.get(cacheKey);
+//     if (cachedBlog) {
+//       console.log('Cache hit:', cacheKey);
+//       return res.status(200).json(JSON.parse(cachedBlog));
+//     }
+
+//     const blog = await blogschema.findById(id);
+//     if (blog) {
+//       await client.setex(cacheKey, 300, JSON.stringify(blog));
+
+//       return res.status(200).json(blog);
+//     } else {
+//       return res.status(404).json({ message: 'Blog not found' });
+//     }
+//   } catch (error) {
+//     console.error('Error fetching blog:', error);
+//     res.status(500).json({ message: 'Internal server error' });
+//   }
+// });
 
 // get user blog
 

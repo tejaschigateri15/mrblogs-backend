@@ -1,24 +1,23 @@
 import userprofile from "./user_profile.js";
 import mongoose from "mongoose";
 
-const signup = mongoose.Schema({
-    username:{
-        type:String
+const signup = new mongoose.Schema({
+    username: {
+        type: String,
+        required: true
     },
-    email:{
-        type:String
+    email: {
+        type: String,
+        required: true,
+        unique: true
     },
-    password:{
-        type:String
+    password: {
+        type: String,
+        required: true
     },
-    // bio:{
-    //     type:String
-    // },
-    // profile_pic:{
-    //     type:String
-    // }
-
-})
+    resetPasswordToken: String,
+    resetPasswordExpires: Date
+});
 
 
 signup.pre('save', async function (next) {
