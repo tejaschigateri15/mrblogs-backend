@@ -237,9 +237,9 @@ app.post('/login', async (req, res) => {
 
 
   if (data) {
-    console.log("data : ",data.password, "password : ",password);
+    // console.log("data : ",data.password, "password : ",password);
     const isMatch = await bcrypt.compare(password, data.password);
-    console.log("isMatch : ",isMatch);
+    // console.log("isMatch : ",isMatch);
     
     if (isMatch) {
       console.log("password matched ")
@@ -276,27 +276,31 @@ app.post('/login', async (req, res) => {
 // forgot password
 app.post('/forgotpassword', async (req, res) => {
   const { email } = req.body;
-  const user = await profile.findOne({email: email});
-  if(user){
-    const token = jwt.sign({email: email}, process.env.RESET_PASSWORD_KEY, {expiresIn: '20m'});
-    user.resetPasswordToken = token;
-    user.resetPasswordExpires = Date.now() + 1200000; // 10 minutes
-    await user.save();
-    const baseurl = req.protocol + "://" + req.get('host');
-    const link = `${baseurl}/reset-password/${token}`;
-    console.log("token",token);
-    
-    await sendEmail({
-      to: user.email,
-      subject: "MR BLOGS - Reset Your Password",
-      token: token,
-      link:link
-    });
+  try {
+      const user = await profile.findOne({ email: email });
+      if (user) {
+          const token = jwt.sign({ email: email }, process.env.RESET_PASSWORD_KEY, { expiresIn: '20m' });
+          user.resetPasswordToken = token;
+          user.resetPasswordExpires = Date.now() + 20 * 60 * 1000; // 20 minutes in milliseconds
+          await user.save();
 
-    res.status(200).json({ message: 'Password reset email sent' });
-  }
-  else{
-    res.status(404).json({error: "User not found"});
+          // const baseUrl = `${req.protocol}://${req.get('host')}`;
+          const link = `${req.get('origin')}/reset-password?token=${token}`;
+          // console.log("link",link);
+          await sendEmail({
+              to: user.email,
+              subject: "MR BLOGS - Reset Your Password",
+              token: token,
+              link: link
+          });
+
+          res.status(200).json({ message: 'Password reset email sent' });
+      } else {
+          res.status(404).json({ error: "User not found" });
+      }
+  } catch (error) {
+      console.error('Error in forgot password:', error);
+      res.status(500).json({ error: "Internal server error" });
   }
 });
 
