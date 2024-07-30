@@ -10,7 +10,7 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-const htmlbody = (token) => {
+const htmlbody = (token,link) => {
     const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -91,7 +91,7 @@ const htmlbody = (token) => {
             <p>Hello there!</p>
             <p>We received a request to reset your password for MR BLOGS. Don't worry, we've got you covered! Click the button below to set a new password and get back to sharing your amazing stories with the world.</p>
             <p>
-                <a href="http://localhost:5173/reset-password?token=${token}" class="btn">Reset My Password</a>
+                <a href="${link}?token=${token}" class="btn">Reset My Password</a>
             </p>
             <p>If you didn't request this password reset, you can safely ignore this email. Your account is still secure.</p>
             <p>Happy blogging!</p>
@@ -106,13 +106,13 @@ const htmlbody = (token) => {
     return html;
 }
 
-async function sendEmail({ to, subject, token }) {
+async function sendEmail({ to, subject, token,link }) {
     try {
         const mailOptions = {
             from: process.env.EMAIL_USER,
             to: to,
             subject: subject,
-            html: htmlbody(token),
+            html: htmlbody(token,link),
         };
 
         const info = await transporter.sendMail(mailOptions);

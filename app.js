@@ -283,13 +283,14 @@ app.post('/forgotpassword', async (req, res) => {
     user.resetPasswordExpires = Date.now() + 1200000; // 10 minutes
     await user.save();
     const baseurl = req.protocol + "://" + req.get('host');
-    const link = `${baseurl}/resetpassword/${token}`;
+    const link = `${baseurl}/reset-password/${token}`;
     console.log("token",token);
     
     await sendEmail({
       to: user.email,
       subject: "MR BLOGS - Reset Your Password",
-      token: token
+      token: token,
+      link:link
     });
 
     res.status(200).json({ message: 'Password reset email sent' });
