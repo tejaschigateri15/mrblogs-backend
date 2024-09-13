@@ -94,8 +94,8 @@ app.use(
 const client = asyncRedis.createClient({
   
   socket: {
-        // host:  "localhost",
-        host:  "redis-service",
+        host:  "localhost",
+        // host:  "redis-service",
   
         port: 6379
     }
@@ -772,10 +772,13 @@ app.post('/api/postcomment', async (req, res) => {
       return res.status(404).send("Blog not found");
     }
 
-    // delete the cache
-    const cacheKey = `comments:${blog_id}`;
-    await client.del(cacheKey);
-    console.log(`Cache invalidated for key: ${cacheKey}`);
+    // // delete the cache
+    // const cacheKey = `comments:${blog_id}`;
+    // await client.del(cacheKey);
+    // console.log(`Cache invalidated for key: ${cacheKey}`);
+    console.log("blog id", blog_id);
+    const cacheKeys = `blog:${blog_id}`;
+    await client.del(cacheKeys);
 
     console.log("updated:", updated);
     return res.status(200).send("Comment posted successfully");
