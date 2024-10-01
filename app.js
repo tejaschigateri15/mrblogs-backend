@@ -91,20 +91,20 @@ app.use(
 );
 
 // for local
-const client = asyncRedis.createClient({
+// const client = asyncRedis.createClient({
   
-  socket: {
-        host:  "localhost",
-        // host:  "redis-service",
+//   socket: {
+//         host:  "localhost",
+//         // host:  "redis-service",
   
-        port: 6379
-    }
-  });
+//         port: 6379
+//     }
+//   });
   
 // console.log(process.env.REDIS_URL);
 
 // cloud redis
-// const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
+const client = asyncRedis.createClient({ url: process.env.REDIS_URL });
 console.log("client : ",process.env.REDIS_URL);
 
 client.on('error', (err) => {
@@ -583,7 +583,10 @@ async function trackView(blog, visitorIp) {
     if (isNewVisitor) {
       blog.views.uniqueVisitors.push(visitorIp);
     }
-    await blog.save();
+    // Only save if this is a Mongoose document
+    if (blog.save) {
+      await blog.save(); 
+    }
     return true; // Indicates the blog was updated
   }
 
@@ -602,7 +605,14 @@ app.get('/api/getblog/:id', async (req, res) => {
     if (cachedBlog) {
       console.log('Cache hit:', cacheKey);
       blog = JSON.parse(cachedBlog);
+
+      // Fetch the document from the DB if it was a cache hit but needs to be updated
+      blog = await blogschema.findById(id);
+      if (!blog) {
+        return res.status(404).json({ message: 'Blog not found' });
+      }
     } else {
+      // Fetch blog from DB directly if not in cache
       blog = await blogschema.findById(id);
       if (!blog) {
         return res.status(404).json({ message: 'Blog not found' });
@@ -612,7 +622,6 @@ app.get('/api/getblog/:id', async (req, res) => {
     const wasUpdated = await trackView(blog, visitorIp);
 
     if (wasUpdated || !cachedBlog) {
-      // Update cache if the blog was updated or wasn't in cache
       await client.setex(cacheKey, 300, JSON.stringify(blog));
     }
 
@@ -622,6 +631,7 @@ app.get('/api/getblog/:id', async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 });
+
 
 
 
