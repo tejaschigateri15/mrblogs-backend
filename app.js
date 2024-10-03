@@ -1203,8 +1203,13 @@ app.post('/api/editblog', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Blog not found' });
     }
     // delete the cache
-    const cacheKey = `blog:${id}`;
-    await client.del(cacheKey);
+    const cacheKey1 = `blog:${id}`;
+    await client.del(cacheKey1);
+    
+    const cacheKey2 = 'allblogs';
+    await client.del(cacheKey2);
+
+    // also delete all blog
 
     // console.log("updated blog : ",updatedBlog);
     res.status(200).json(updatedBlog);
