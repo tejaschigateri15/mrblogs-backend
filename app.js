@@ -560,8 +560,10 @@ app.get('/api/getblog', async (req, res) => {
 
     // Fetch non-private blogs with selected fields
     const allblogs = await blogschema.find({ isPrivate: false })
-      .select('_id author author_img blog_image title body tags date')
+      .select('_id author author_img blog_image title body tags date isPrivate')
       .exec();
+
+    // console.log(allblogs)
 
     await client.setex(cacheKey, 300, JSON.stringify(allblogs));
 
