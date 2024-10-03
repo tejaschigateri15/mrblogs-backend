@@ -526,17 +526,42 @@ app.post('/api/createblog', verifyToken, async (req, res) => {
 
 // get all blogs
 
+app.get('/api/getblog/all', async (req, res) => {
+  try {
+    // const cacheKey = 'allblogs';
+    // console.log(req.ip)
+    // const cachedData = await client.get(cacheKey);
+    // if (cachedData) {
+    //   console.log('Cache hit:', cacheKey)
+    //   return res.status(200).json(JSON.parse(cachedData));
+    // }
+
+    const allblogs = await blogschema.find();
+
+    // await client.setex(cacheKey, 300, JSON.stringify(allblogs));
+
+    res.status(200).json(allblogs);
+  } catch (error) {
+    console.error('Error fetching blogs:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 app.get('/api/getblog', async (req, res) => {
   try {
     const cacheKey = 'allblogs';
-    console.log(req.ip)
+
+    // Check if data is already cached
     const cachedData = await client.get(cacheKey);
     if (cachedData) {
-      console.log('Cache hit:', cacheKey)
+      console.log('Cache hit:', cacheKey);
       return res.status(200).json(JSON.parse(cachedData));
     }
 
-    const allblogs = await blogschema.find();
+    // Fetch non-private blogs with selected fields
+    const allblogs = await blogschema.find({ isPrivate: false })
+      .select('_id author author_img blog_image title body tags date')
+      .exec();
 
     await client.setex(cacheKey, 300, JSON.stringify(allblogs));
 
@@ -546,6 +571,7 @@ app.get('/api/getblog', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
 
 function getCurrentISTTime() {
   return new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
