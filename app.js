@@ -675,7 +675,7 @@ app.get('/api/getblog/:id', async (req, res) => {
 
     } else {
       // Blog is not in cache, fetch from DB
-      blog = await blogschema.findById(id).select('_id author author_img blog_image title body tags category comments date');
+      blog = await blogschema.findById(id).select('_id author author_img blog_image title body tags category comments views date');
       if (!blog) {
         return res.status(404).json({ message: 'Blog not found' });
       }
