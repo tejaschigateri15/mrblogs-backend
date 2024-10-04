@@ -621,7 +621,7 @@ async function trackView(blog, visitorIp) {
   return false; // Indicates no update was necessary
 }
 
-app.get('/api/getblog/:id', async (req, res) => {
+app.get('/api/blog/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const visitorIp = req.ip.replace(/^.*:/, ''); // Extract IPv4 address if IPv6 format
@@ -659,6 +659,43 @@ app.get('/api/getblog/:id', async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 });
+
+app.get('/api/getblog/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const visitorIp = req.ip.replace(/^.*:/, ''); 
+    const cacheKey = `blog:${id}`;
+
+    let blog;
+    const cachedBlog = await client.get(cacheKey);
+
+    if (cachedBlog) {
+      console.log('Cache hit:', cacheKey);
+      blog = JSON.parse(cachedBlog); 
+
+    } else {
+      // Blog is not in cache, fetch from DB
+      blog = await blogschema.findById(id).select('_id author author_img blog_image title body tags category comments date');
+      if (!blog) {
+        return res.status(404).json({ message: 'Blog not found' });
+      }
+
+      await client.setex(cacheKey, 300, JSON.stringify(blog));
+    }
+
+    const wasUpdated = await trackView(blog, visitorIp); 
+
+    if (wasUpdated) {
+      await client.setex(cacheKey, 300, JSON.stringify(blog));
+    }
+
+    return res.status(200).json(blog);
+  } catch (error) {
+    console.error('Error fetching blog:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 
 
 
