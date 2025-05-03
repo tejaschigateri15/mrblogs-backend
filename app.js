@@ -1096,7 +1096,7 @@ app.get("/api/category/:category", async (req, res) => {
 });
 
 // follow category
-app.post("/api/followcategory", async (req, res) => {
+app.post("/api/followcategory",verifyTestToken, async (req, res) => {
   const { category, username } = req.body;
   try {
     const getuserinfo = await userprofile.findOne({ name: username });
