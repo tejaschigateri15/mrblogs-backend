@@ -4,4 +4,4 @@ node_modules
 .dockerignore
 test.js
 server.js
-
+logs

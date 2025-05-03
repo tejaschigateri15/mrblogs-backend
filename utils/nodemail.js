@@ -97,7 +97,7 @@ const htmlbody = (token, link) => {
             <p>Happy blogging!</p>
         </div>
         <div class="footer">
-            &copy; 2024 MR BLOGS. All rights reserved.
+            &copy; 2025 MR BLOGS. All rights reserved.
         </div>
     </div>
 </body>

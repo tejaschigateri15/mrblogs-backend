@@ -7,4 +7,9 @@ const generateAccessToken = (user)=>{
     return jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' }); 
 }
 
-export default generateAccessToken;
+const generateAccessTokenWithId = (userId)=>{
+    console.log(userId)
+    return jwt.sign(userId, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' }); 
+}
+
+export { generateAccessToken, generateAccessTokenWithId };
