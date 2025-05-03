@@ -1663,7 +1663,7 @@ app.post("/api/testeditblog", verifyTestToken, async (req, res) => {
 });
 
 // logout
-app.delete("/api/logout", verifyTestToken,async (req, res) => {
+app.delete("/api/logout",async (req, res) => {
   const sessionId = req.sessionId;
   console.log("session id : ", sessionId);
   // delete the session data from redis
