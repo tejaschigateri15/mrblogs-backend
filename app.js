@@ -704,7 +704,7 @@ app.get("/api/getblog", async (req, res) => {
     // Check if data is already cached
     const cachedData = await client.get(cacheKey);
     if (cachedData) {
-      logger.debug('Cache hit', { cacheKey, endpoint: 'getblog' });
+      logger.info('Cache hit', { cacheKey, endpoint: 'getblog' });
       return res.status(200).json(JSON.parse(cachedData));
     }
 
