@@ -987,7 +987,7 @@ app.post("/api/saveblog", async (req, res) => {
 
 // add comments to the blog
 
-app.post("/api/postcomment", async (req, res) => {
+app.post("/api/postcomment",verifyTestToken, async (req, res) => {
   const { blog_id, username, comment } = req.body;
 
   if (!blog_id || !username || !comment) {
@@ -1271,7 +1271,7 @@ app.get("/api/getuserlikeandcomment/:id/:username", async (req, res) => {
   }
 });
 
-app.post("/api/likeblog", async (req, res) => {
+app.post("/api/likeblog", verifyTestToken,async (req, res) => {
   const { blog_id, username } = req.body;
   try {
     const updated = await blogschema.findOneAndUpdate(
@@ -1308,7 +1308,7 @@ app.post("/api/unlikeblog", async (req, res) => {
 
 // summarization of the blog
 
-app.post('/api/summarize', async(req,res)=>{
+app.post('/api/summarize', verifyTestToken,async(req,res)=>{
   logger.info('Summarization request received');
 
   const request_body = req.body;
