@@ -1472,7 +1472,7 @@ app.get("/api/getallcomments/:author", async (req, res) => {
   }
 });
 
-app.delete("/api/deleteblog/:id", async (req, res) => {
+app.delete("/api/deleteblog/:id", verifyTestToken,async (req, res) => {
   const { id } = req.params;
   try {
     const data = await blogschema.findByIdAndDelete(id);
@@ -1706,7 +1706,7 @@ app.get("/api/updatePrivate/:id", async (req, res) => {
   }
 });
 
-app.get("/api/togglePrivate/:id", async (req, res) => {
+app.get("/api/togglePrivate/:id", verifyTestToken,async (req, res) => {
   const { id } = req.params;
   logger.info('Toggling blog privacy:', { blogId: id });
 
