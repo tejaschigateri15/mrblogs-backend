@@ -80,18 +80,7 @@ app.use(hpp());
 app.use(compression());
 
 app.use(cors());
-app.options('*', cors());
 
-// With this configuration that allows all origins:
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  credentials: true,
-  maxAge: 86400 // 24 hours
-}));
-
-// This handles preflight requests
 app.options('*', cors());
 
 app.disable('x-powered-by');
