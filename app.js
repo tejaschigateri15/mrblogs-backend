@@ -1472,14 +1472,51 @@ app.get("/api/getallcomments/:author", async (req, res) => {
   }
 });
 
-app.delete("/api/deleteblog/:id", verifyTestToken,async (req, res) => {
+app.delete("/api/deleteblog/:id", verifyTestToken, async (req, res) => {
   const { id } = req.params;
   try {
+    // First get the blog to access its data before deletion
+    const blog = await blogschema.findById(id);
+    if (!blog) {
+      logger.warn('Blog deletion failed - not found:', { id });
+      return res.status(404).json({ message: "Blog not found" });
+    }
+    
+    const { author, category } = blog;
+    logger.info('Starting blog deletion:', { id, author, category });
+    
+    // Delete the blog
     const data = await blogschema.findByIdAndDelete(id);
-    logger.info('Blog deleted:', { id });
+    
+    // Invalidate all related caches
+    const cacheKeys = [
+      `blog:${id}`,                 // Individual blog cache
+      `allblogs`,                   // All blogs list
+      `userblog:${author}`,         // Author's blogs
+      `category:${category}`,       // Category blogs
+      `comments:${id}`,             // Blog comments
+      `likesSaved:${id}:*`          // Any likes/saves for this blog
+    ];
+    
+    for (const key of cacheKeys) {
+      if (key.includes('*')) {
+        // For pattern-based deletion, we'd need a different approach
+        // Redis SCAN would be ideal but for simplicity we'll log this case
+        logger.info('Note: Consider implementing pattern-based cache deletion for:', { pattern: key });
+      } else {
+        await client.del(key);
+        logger.debug('Cache invalidated:', { key });
+      }
+    }
+    
+    logger.info('Blog deleted successfully:', { id, author });
     res.status(200).json(data);
   } catch (error) {
-    logger.error('Blog deletion error:', error);
+    logger.error('Blog deletion error:', { 
+      id, 
+      error: error.message,
+      stack: error.stack 
+    });
     console.error("Error deleting blog:", error);
     res.status(500).json({ message: "Internal server error" });
   }
@@ -1663,7 +1700,7 @@ app.post("/api/testeditblog", verifyTestToken, async (req, res) => {
 });
 
 // logout
-app.delete("/api/logout",async (req, res) => {
+app.delete("/api/logout",verifyTestToken,async (req, res) => {
   const sessionId = req.sessionId;
   console.log("session id : ", sessionId);
   // delete the session data from redis
