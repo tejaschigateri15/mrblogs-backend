@@ -8,7 +8,7 @@ const generateAccessToken = (user)=>{
 }
 
 const generateAccessTokenWithId = (userId)=>{
-    console.log(userId)
+    logger.debug(userId)
     return jwt.sign(userId, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' }); 
 }
 
