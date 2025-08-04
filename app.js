@@ -1538,7 +1538,7 @@ app.post("/api/editblog", verifyTestToken, async (req, res) => {
     // if (!sessionData) {
     //   return res.status(401).json({ error: "Session expired" });
     // }
-    console.log("session data : ", sessionData);
+    logger.debug('Session data retrieved:', { sessionData });
 
     const authorProfile = await profile.findOne({
       username: req.user.username,
