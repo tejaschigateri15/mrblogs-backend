@@ -10,18 +10,18 @@ const verifyToken = (req, res, next) => {
   const testauthHead = req.headers['x-testaccesstoken'];
   // const test_token = authHead && authHead.split(' ')[1]; 
 
-  console.log("fg ",testauthHead);
+  logger.debug("fg ", testauthHead);
   // console.log(req.headers);
 
   if (testauthHead) {
     const test_token = testauthHead.split(' ')[1];
     jwt.verify(test_token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
       if (err) {
-        console.log(err);
+        logger.error(err);
       }
       if (decoded && decoded.sessionId) {
         req.sessionId = decoded.sessionId;
-        console.log("test access token decoded value:", decoded);
+        logger.debug("test access token decoded value:", decoded);
       }
     });
 }
