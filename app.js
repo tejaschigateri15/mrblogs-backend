@@ -955,15 +955,50 @@ app.get("/api/savedblog/:username", async (req, res) => {
 });
 
 // save blog
-
-app.post("/api/saveblog", async (req, res) => {
+app.post("/api/saveblog", verifyTestToken, async (req, res) => {
   const { username, blog_id } = req.body;
+  
+  // Input validation
+  if (!username || !blog_id) {
+    logger.warn('Save blog failed - Missing required fields:', { username, blog_id });
+    return res.status(400).json({ error: "Username and blog ID are required" });
+  }
+
   try {
+    // Check if user exists
+    const userExists = await userprofile.findOne({ name: username });
+    if (!userExists) {
+      logger.warn('Save blog failed - User not found:', { username });
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if blog exists
+    const blogExists = await blogschema.findById(blog_id);
+    if (!blogExists) {
+      logger.warn('Save blog failed - Blog not found:', { blog_id });
+      return res.status(404).json({ error: "Blog not found" });
+    }
+
+    // Check if blog is already saved
+    if (userExists.saved_blogs && userExists.saved_blogs.includes(blog_id)) {
+      logger.info('Blog already saved by user:', { username, blog_id });
+      return res.status(200).json({ 
+        message: "Blog already saved", 
+        isSaved: true,
+        totalSaved: userExists.saved_blogs.length
+      });
+    }
+
     const updated = await userprofile.findOneAndUpdate(
       { name: username },
       { $addToSet: { saved_blogs: blog_id } },
       { new: true }
     );
+
+    if (!updated) {
+      logger.error('Save blog failed - Update failed:', { username, blog_id });
+      return res.status(500).json({ error: "Failed to save blog" });
+    }
 
     // Invalidate relevant caches
     const cacheKeys = [
@@ -974,14 +1009,191 @@ app.post("/api/saveblog", async (req, res) => {
 
     for (const key of cacheKeys) {
       await client.del(key);
-      logger.info('Cache invalidated:', { key });
+      logger.debug('Cache invalidated:', { key });
     }
 
-    logger.info('Blog saved:', { username, blog_id });
-    res.status(200).send("Blog saved successfully");
+    logger.info('Blog saved successfully:', { 
+      username, 
+      blog_id, 
+      totalSaved: updated.saved_blogs.length 
+    });
+
+    res.status(200).json({
+      message: "Blog saved successfully",
+      isSaved: true,
+      totalSaved: updated.saved_blogs.length,
+      blogId: blog_id
+    });
   } catch (error) {
-    logger.error('Error saving blog:', { username, blog_id, error: error.message });
-    res.status(500).send("Internal Server Error");
+    logger.error('Error saving blog:', { 
+      username, 
+      blog_id, 
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// unsave blog
+app.post("/api/unsaveblog", verifyTestToken, async (req, res) => {
+  const { username, blog_id } = req.body;
+  
+  // Input validation
+  if (!username || !blog_id) {
+    logger.warn('Unsave blog failed - Missing required fields:', { username, blog_id });
+    return res.status(400).json({ error: "Username and blog ID are required" });
+  }
+
+  try {
+    // Check if user exists
+    const userExists = await userprofile.findOne({ name: username });
+    if (!userExists) {
+      logger.warn('Unsave blog failed - User not found:', { username });
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if blog exists
+    const blogExists = await blogschema.findById(blog_id);
+    if (!blogExists) {
+      logger.warn('Unsave blog failed - Blog not found:', { blog_id });
+      return res.status(404).json({ error: "Blog not found" });
+    }
+
+    // Check if blog is not saved
+    if (!userExists.saved_blogs || !userExists.saved_blogs.includes(blog_id)) {
+      logger.info('Blog was not saved by user:', { username, blog_id });
+      return res.status(200).json({ 
+        message: "Blog was not saved by user", 
+        isSaved: false,
+        totalSaved: userExists.saved_blogs ? userExists.saved_blogs.length : 0
+      });
+    }
+
+    const updated = await userprofile.findOneAndUpdate(
+      { name: username },
+      { $pull: { saved_blogs: blog_id } },
+      { new: true }
+    );
+
+    if (!updated) {
+      logger.error('Unsave blog failed - Update failed:', { username, blog_id });
+      return res.status(500).json({ error: "Failed to unsave blog" });
+    }
+
+    // Invalidate relevant caches
+    const cacheKeys = [
+      `savedblog:${username}`,
+      `recentlySaved:${username}`,
+      `likesSaved:${blog_id}:${username}`
+    ];
+
+    for (const key of cacheKeys) {
+      await client.del(key);
+      logger.debug('Cache invalidated:', { key });
+    }
+
+    logger.info('Blog unsaved successfully:', { 
+      username, 
+      blog_id, 
+      totalSaved: updated.saved_blogs.length 
+    });
+
+    res.status(200).json({
+      message: "Blog unsaved successfully",
+      isSaved: false,
+      totalSaved: updated.saved_blogs.length,
+      blogId: blog_id
+    });
+  } catch (error) {
+    logger.error('Error unsaving blog:', { 
+      username, 
+      blog_id, 
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// toggle save blog (combines save/unsave functionality)
+app.post("/api/togglesave", verifyTestToken, async (req, res) => {
+  const { username, blog_id } = req.body;
+  
+  // Input validation
+  if (!username || !blog_id) {
+    logger.warn('Toggle save failed - Missing required fields:', { username, blog_id });
+    return res.status(400).json({ error: "Username and blog ID are required" });
+  }
+
+  try {
+    // Check if user exists
+    const userExists = await userprofile.findOne({ name: username });
+    if (!userExists) {
+      logger.warn('Toggle save failed - User not found:', { username });
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if blog exists
+    const blogExists = await blogschema.findById(blog_id);
+    if (!blogExists) {
+      logger.warn('Toggle save failed - Blog not found:', { blog_id });
+      return res.status(404).json({ error: "Blog not found" });
+    }
+
+    const isCurrentlySaved = userExists.saved_blogs && userExists.saved_blogs.includes(blog_id);
+    
+    let updated;
+    if (isCurrentlySaved) {
+      // Unsave the blog
+      updated = await userprofile.findOneAndUpdate(
+        { name: username },
+        { $pull: { saved_blogs: blog_id } },
+        { new: true }
+      );
+      logger.info('Blog unsaved via toggle:', { username, blog_id });
+    } else {
+      // Save the blog
+      updated = await userprofile.findOneAndUpdate(
+        { name: username },
+        { $addToSet: { saved_blogs: blog_id } },
+        { new: true }
+      );
+      logger.info('Blog saved via toggle:', { username, blog_id });
+    }
+
+    if (!updated) {
+      logger.error('Toggle save failed - Update failed:', { username, blog_id });
+      return res.status(500).json({ error: "Failed to toggle save status" });
+    }
+
+    // Invalidate relevant caches
+    const cacheKeys = [
+      `savedblog:${username}`,
+      `recentlySaved:${username}`,
+      `likesSaved:${blog_id}:${username}`
+    ];
+
+    for (const key of cacheKeys) {
+      await client.del(key);
+      logger.debug('Cache invalidated:', { key });
+    }
+
+    const newSaveStatus = !isCurrentlySaved;
+    res.status(200).json({
+      message: newSaveStatus ? "Blog saved successfully" : "Blog unsaved successfully",
+      isSaved: newSaveStatus,
+      totalSaved: updated.saved_blogs.length,
+      blogId: blog_id
+    });
+  } catch (error) {
+    logger.error('Error toggling save:', { 
+      username, 
+      blog_id, 
+      error: error.message,
+      stack: error.stack 
+    });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -1303,6 +1515,81 @@ app.post("/api/unlikeblog", async (req, res) => {
   } catch (error) {
     logger.error('Error unliking blog:', { blog_id, username, error: error.message });
     res.status(500).send("Internal Server Error");
+  }
+});
+
+// Enhanced toggle like endpoint (optional - combines like/unlike)
+app.post("/api/togglelike", verifyTestToken, async (req, res) => {
+  const { blog_id, username } = req.body;
+  
+  // Input validation
+  if (!blog_id || !username) {
+    logger.warn('Toggle like failed - Missing required fields:', { blog_id, username });
+    return res.status(400).json({ error: "Blog ID and username are required" });
+  }
+
+  try {
+    // Check if blog exists first
+    const blog = await blogschema.findById(blog_id);
+    if (!blog) {
+      logger.warn('Toggle like failed - Blog not found:', { blog_id });
+      return res.status(404).json({ error: "Blog not found" });
+    }
+
+    const isCurrentlyLiked = blog.likes && blog.likes.likedby && blog.likes.likedby.includes(username);
+    
+    let updated;
+    if (isCurrentlyLiked) {
+      // Unlike the blog
+      updated = await blogschema.findOneAndUpdate(
+        { _id: blog_id },
+        { $pull: { "likes.likedby": username } },
+        { new: true }
+      );
+      logger.info('Blog unliked via toggle:', { blog_id, username });
+    } else {
+      // Like the blog
+      updated = await blogschema.findOneAndUpdate(
+        { _id: blog_id },
+        { $addToSet: { "likes.likedby": username } },
+        { new: true }
+      );
+      logger.info('Blog liked via toggle:', { blog_id, username });
+    }
+
+    if (!updated) {
+      logger.error('Toggle like failed - Update failed:', { blog_id });
+      return res.status(500).json({ error: "Failed to update blog" });
+    }
+
+    // Invalidate relevant caches
+    const cacheKeys = [
+      `likesSaved:${blog_id}:${username}`,
+      `userLikeComment:${blog_id}:${username}`,
+      `blog:${blog_id}`,
+      `popular`
+    ];
+
+    for (const key of cacheKeys) {
+      await client.del(key);
+      logger.debug('Cache invalidated:', { key });
+    }
+
+    const newLikeStatus = !isCurrentlyLiked;
+    res.status(200).json({
+      message: newLikeStatus ? "Blog liked successfully" : "Blog unliked successfully",
+      isLiked: newLikeStatus,
+      totalLikes: updated.likes.likedby.length,
+      blogId: blog_id
+    });
+  } catch (error) {
+    logger.error('Error toggling like:', { 
+      blog_id, 
+      username, 
+      error: error.message,
+      stack: error.stack 
+    });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
